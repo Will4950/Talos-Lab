@@ -1,0 +1,180 @@
+# ─────────────────────────────────────────────────────────────────────────
+# cluster.yaml - lab configuration, read by the scripts in ../scripts via yq.
+#
+# Copy this file to secrets/cluster.yaml and edit it. Keep the real file out of
+# git (see .gitignore) - it can hold a repo token or a path to a deploy key.
+# ─────────────────────────────────────────────────────────────────────────
+
+clusterName: homelab
+
+# Component versions. Bumping any of these is a one-line change.
+versions:
+  talos: v1.13.5 # github.com/siderolabs/talos/releases (ships Kubernetes 1.36)
+  kubernetes: "" # blank = the version bundled with Talos
+  argocd: stable # "stable" tracks latest, or pin e.g. v3.4.0
+  longhorn: "1.12.0" # artifacthub.io/packages/helm/longhorn/longhorn
+  metallb: v0.16.1 # github.com/metallb/metallb/releases
+
+# ── Network ───────────────────────────────────────────────────────────────
+# Subnet 192.168.4.0/24, gateway .254. The DHCP server hands out .110–.220, so
+# every static address below (nodes, endpoint) and every MetalLB pool stays
+# clear of that range.
+network:
+  subnet: 192.168.4.0/24
+  gateway: 192.168.4.254
+
+  # How clients reach the Kubernetes API at apiEndpoint. In-cluster components
+  # always use KubePrism; this governs the stable address kubectl/talosctl use.
+  #   talos-vip = SELF-HOSTED, in-cluster shared IP (default): the control planes elect
+  #               an owner via etcd and answer for apiEndpoint - no external anything.
+  #               Requires healthy etcd AND an L2 segment that floods the VIP's ARP
+  #               across your PVE hosts, with the control-plane NICs' PVE firewall off
+  #               (this suite sets firewall=0). See the guide's VIP section.
+  #   none      = single control plane; the endpoint is that node's own IP.
+  endpointMode: talos-vip
+  apiEndpoint: 192.168.4.10 # talos-vip: a FREE IP the control planes float · none: leave blank
+
+  kubeSpan: false # WireGuard mesh - enable only if hosts span subnets/sites
+
+  # Static resolvers for the NODES (image pulls / host DNS), independent of DHCP.
+  # Talos fails over across the list on timeout/refused. If your primary DNS runs
+  # IN the cluster, list an out-of-cluster resolver LAST so nodes can still pull
+  # images to recover DNS after a cold start. Omit / leave empty for pure DHCP.
+  # dnsServers:
+  #   - 192.168.4.53 # in-cluster primary (e.g. Pi-hole)
+  #   - 1.1.1.1    # out-of-cluster last resort
+
+# ── Install ─────────────────────────────────────────────────────────────
+install:
+  disk: /dev/sda # verify with: talosctl -n <ip> get disks --insecure
+  scheduleOnControlPlane: false # false = dedicated workers run the load and the storage
+
+# ── Nodes ───────────────────────────────────────────────────────────────
+# Rule of thumb: one control plane + one worker per Proxmox host. Adding a host
+# means adding one entry to each list (uncomment the pveN lines below).
+#   host  = the Proxmox host name; becomes the topology.kubernetes.io/zone label
+#   vmid  = Proxmox VMID to create (only used when proxmox.provisionVMs: true)
+#   mac   = NIC MAC for the DHCP reservation (only used when provisioning)
+#
+# etcd note: real control-plane HA needs three separate hosts. With two hosts
+# you have two control planes, which does not survive a host loss at the control
+# plane layer - workloads keep running, but cluster changes pause until the host
+# returns. The third host (below) is where quorum becomes fault-tolerant.
+nodes:
+  controlPlanes:
+    - { ip: 192.168.4.11, host: pve1, vmid: 1011, mac: "bc:24:11:00:01:01" }
+    - { ip: 192.168.4.12, host: pve2, vmid: 1012, mac: "bc:24:11:00:02:01" }
+    # - { ip: 192.168.4.13, host: pve3, vmid: 1013, mac: "bc:24:11:00:03:01" }
+    # - { ip: 192.168.4.14, host: pve4, vmid: 1014, mac: "bc:24:11:00:04:01" }
+  workers:
+    - { ip: 192.168.4.21, host: pve1, vmid: 1021, mac: "bc:24:11:00:01:02" }
+    # pve2 has more to spare - override cores/memory for just this node:
+    - {
+        ip: 192.168.4.22,
+        host: pve2,
+        vmid: 1022,
+        mac: "bc:24:11:00:02:02",
+        cores: 6,
+        memory: 12288,
+      }
+    # - { ip: 192.168.4.23, host: pve3, vmid: 1023, mac: "bc:24:11:00:03:02" }
+    # - { ip: 192.168.4.24, host: pve4, vmid: 1024, mac: "bc:24:11:00:04:02" }
+
+# ── Longhorn (replicated block storage) ──────────────────────────────────
+longhorn:
+  # Replica count + other Longhorn settings live in manifests/longhorn/values.yaml
+  # (defaultReplicaCount + defaultClassReplicaCount), applied by Argo CD, not here.
+  # A dedicated data disk keeps Longhorn's I/O and capacity off the OS disk. Talos
+  # mounts a second, BLANK disk on each worker at /var/mnt/longhorn via a
+  # UserVolumeConfig, and Longhorn's data path points there. When provisionVMs is
+  # true the disk is created for you; if you build the VMs yourself, add a second
+  # blank disk to each worker (and to control planes only if scheduleOnControlPlane).
+  dedicatedDisk:
+    enabled: true
+    sizeGB: 100 # size of the data disk created when provisioning
+    diskSelector: "!system_disk" # Talos match expr selecting the blank data disk
+    minSize: "10GiB" # Talos requires a size bound; grow:true then fills the disk (must be <= the data disk)
+
+# ── MetalLB (LAN IPs for apps) ────────────────────────────────────────────
+# The DHCP range (.110–.220) is off-limits, so MetalLB takes the free blocks on
+# either side of it - plenty of room. Add pools or ranges freely; you can also
+# split internal vs external onto separate named pools.
+metallb:
+  enabled: true
+  pools:
+    - name: lan
+      addresses:
+        - 192.168.4.32-192.168.4.109 # low block, below DHCP
+        - 192.168.4.221-192.168.4.250 # high block, above DHCP
+
+# ── Sealed Secrets (encrypt secrets for Git) ──────────────────────────────
+# Installed from the pinned release manifest into kube-system as
+# "sealed-secrets-controller" - the name+namespace kubeseal expects by default.
+# Seal a Secret with kubeseal and commit the SealedSecret; the controller
+# decrypts it in-cluster. Version = controller + matching kubeseal release.
+sealedSecrets:
+  enabled: true
+  version: "0.38.4" # github.com/bitnami/sealed-secrets/releases
+
+# ── Proxmox (optional VM provisioning) ────────────────────────────────────
+proxmox:
+  provisionVMs: false # true = create/start the VMs over SSH with qm
+  sshOpts: "-o StrictHostKeyChecking=accept-new"
+  hosts: # ssh targets, only used when provisionVMs: true
+    - { name: pve1, ssh: root@192.168.4.5 }
+    - { name: pve2, ssh: root@192.168.4.6 }
+    # - { name: pve3, ssh: root@192.168.4.7 }
+    # - { name: pve4, ssh: root@192.168.4.8 }
+  bridge: vmbr0 # plain Linux bridge, OR a Proxmox SDN VNet name (e.g. lab)
+  storage: local-lvm
+  isoStorage: local
+  isoDir: /var/lib/vz/template/iso
+  vm:
+    diskGB: 40 # OS disk for every node (data disk = longhorn.dedicatedDisk.sizeGB)
+    # Per-role sizing. Control planes only run etcd + the API, so they can be smaller
+    # than the workers, which carry every pod and all the storage. Memory is in MiB.
+    # Any node below may override cores/memory/diskGB inline (see the nodes block) when
+    # one Proxmox host differs from another.
+    controlPlane:
+      cores: 2
+      memory: 4096
+    worker:
+      cores: 4
+      memory: 8192
+
+# ── OPNsense DHCP reservations (optional) ─────────────────────────────────
+# Create GUI-visible static DHCP reservations for the Talos nodes on an OPNsense
+# box running dnsmasq, via its API. 00-dhcp-opnsense.sh adds one host per node -
+# they appear under Services → Dnsmasq DNS & DHCP → Hosts and can be edited there
+# - then applies them with a dnsmasq reconfigure. Idempotent: re-running updates
+# the same entries instead of duplicating them.
+#
+# ONE-TIME setup on OPNsense:
+#   System → Access → Users → (edit your user) → "API keys" → +  downloads a
+#   file with key= and secret=; put those below. Ensure a DHCP range exists on
+#   the nodes' subnet (node IPs may sit outside the pool as long as they're in
+#   that same subnet). Each node's hostname is its optional `name:` field, else
+#   <hostnamePrefix>-<role>-<n>.
+opnsense:
+  enabled: false
+  baseURL: https://192.168.4.254 # OPNsense web UI base URL (no trailing slash)
+  apiKey: "" # from the downloaded API key file
+  apiSecret: ""
+  verifyTLS: false # true only if your workstation trusts the box's cert
+  domain: "" # optional; blank = DHCP reservation only, no DNS host override
+  hostnamePrefix: talos # hostname = talos-cp-1, talos-worker-1, ...
+
+# ── Argo CD app-of-apps (optional) ────────────────────────────────────────
+argocd:
+  appOfApps:
+    enabled: false
+    repoURL: "" # git@github.com:org/repo.git (SSH) or https://github.com/org/repo.git
+    targetRevision: main
+    path: apps # directory of child Application manifests
+    sshKeyFile: "" # path to a deploy key (for an SSH url)
+    pat: "" # token with read access (for an HTTPS url)
+
+# ── Timeouts ──────────────────────────────────────────────────────────────
+timeouts:
+  health: 10m # talosctl health + kubectl wait
+  maintenanceSeconds: 600 # per-node wait for the maintenance API
