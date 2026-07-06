@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Talos Kubernetes on Proxmox - Lab Guide</title>
+<link rel="icon" type="image/png" href="logo.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -428,7 +429,15 @@
       <h2>Before you start</h2>
       <p>This builds a cluster from scratch; it does not attach to an existing one. Nothing here needs to exist yet
         except the ground it stands on: the hosts, a working network with DHCP, outbound internet, and a few CLI tools on
-        your machine. Get the pieces below in place first and the phases in §9 run start to finish.</p>
+        your machine. Get the pieces below in place first and the phases in <a href="#run">§9</a> run start to finish.</p>
+      <div style="background:var(--accent-tint);border:1px solid var(--accent);border-radius:8px;padding:16px 18px;margin:20px 0">
+        <p style="margin:0;display:flex;align-items:center;gap:10px;font-size:14.5px">
+          <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor" style="color:var(--accent-ink);flex-shrink:0" aria-hidden="true">
+            <path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"></path>
+          </svg>
+          <span><strong style="color:var(--accent-ink)">Get the scripts:</strong> <a href="https://github.com/Will4950/Talos-Lab" target="_blank" rel="noopener" style="color:var(--accent-ink);font-weight:600;text-decoration:underline">github.com/Will4950/Talos-Lab</a></span>
+        </p>
+      </div>
       <h3>Hardware</h3>
       <ul>
         <li>Two or more Proxmox VE hosts (9.x) on the same L2 network; add as many as you like. You'll run two VMs on each.</li>
@@ -456,7 +465,7 @@
       <ul>
         <li>All hosts on <strong>one L2 segment / subnet</strong>. With more than one host, the bridge or SDN VNet must
           <strong>flood ARP across hosts</strong> - the API VIP (talos-vip) and MetalLB both announce over ARP, so a host-local
-          zone breaks cross-host traffic (see §16).</li>
+          zone breaks cross-host traffic (see <a href="#trouble">§16</a>).</li>
         <li>A <strong>DHCP server on that subnet</strong> that supports <strong>reservations</strong> (MAC to a fixed IP). Your
           node IPs sit in the subnet but <strong>outside the DHCP pool</strong>, and the MetalLB pools stay clear of it too.</li>
         <li><strong>Outbound internet from the nodes.</strong> On first boot they pull the Talos image from
@@ -466,8 +475,8 @@
         <li>Host clocks roughly <strong>in sync</strong> (NTP). etcd is time-sensitive and a large skew stops nodes joining.</li>
       </ul>
       <p><b>Optional, only if you use them:</b> root SSH to each host (lets the scripts build the VMs and prep the bridge);
-        a private Git repo plus a deploy key for the Argo CD app-of-apps (§10); an OPNsense box if you want the scripts to
-        write DHCP reservations for you (§9, step 0).</p>
+        a private Git repo plus a deploy key for the Argo CD app-of-apps (<a href="#private-repo">§10</a>); an OPNsense box if you want the scripts to
+        write DHCP reservations for you (<a href="#run">§9</a>, step 0).</p>
 
       <h3>Project docs &amp; where to get help</h3>
       <p>Each layer is its own project with its own docs and community. When something specific breaks, go to the source:</p>
@@ -526,7 +535,7 @@
         <div class="adm__t">Reserve before boot</div>
         <p>Create the control-plane and worker DHCP reservations before the VMs first boot (or reboot them after). A node
           that boots without its reservation lands somewhere in .110–.220 and the bootstrap won't find it where it expects. On
-          OPNsense (dnsmasq) the <span class="mono-inline">dhcp</span> phase can create them for you (GUI-visible, via the API) - see §6 and §9.</p>
+          OPNsense (dnsmasq) the <span class="mono-inline">dhcp</span> phase can create them for you (GUI-visible, via the API) - see <a href="#build">§6</a> and <a href="#run">§9</a>.</p>
       </div>
     </section>
 
@@ -791,8 +800,8 @@ arping -c3 192.168.4.10        # replies should come from the owner's MAC</code>
 
       <h3><span class="s">8</span>Argo CD, Sealed Secrets, and timeouts</h3>
       <p>Optional: point Argo CD at a private repo of Application manifests and it'll sync your whole platform after
-        bootstrap (you wire up the key in §10). <span class="mono-inline">sealedSecrets</span> installs the controller that
-        lets you keep encrypted secrets in that same repo (§11). The timeouts cover how long the scripts wait for health and
+        bootstrap (you wire up the key in <a href="#private-repo">§10</a>). <span class="mono-inline">sealedSecrets</span> installs the controller that
+        lets you keep encrypted secrets in that same repo (<a href="#sealed">§11</a>). The timeouts cover how long the scripts wait for health and
         for each node's maintenance API.</p>
       <figure class="code">
         <div class="code__bar"><span class="code__name"><span class="lang yaml">yaml</span>cluster.yaml</span><button class="copy" data-copy type="button">Copy</button></div>
@@ -853,7 +862,7 @@ timeouts:
       <div class="adm tip">
         <div class="adm__t">That's the whole file</div>
         <p>Those blocks are the complete configuration. The shipped
-          <span class="mono-inline">cluster.example.yaml</span> is exactly this with fuller inline comments - see §17 for the
+          <span class="mono-inline">cluster.example.yaml</span> is exactly this with fuller inline comments - see <a href="#files">§17</a> for the
           whole thing in one piece.</p>
       </div>
     </section>
@@ -864,7 +873,7 @@ timeouts:
       <h2>Functional parts, one job each</h2>
       <p>The bootstrap is a set of small scripts in <span class="mono-inline">scripts/</span>, each doing one thing and
         reading the same <span class="mono-inline">cluster.yaml</span> through the shared
-        <span class="mono-inline">lib.sh</span>. You run them as commands (§9), individually or all at once.</p>
+        <span class="mono-inline">lib.sh</span>. You run them as commands (<a href="#run">§9</a>), individually or all at once.</p>
       <div class="tbl-scroll">
       <table class="tbl">
         <thead><tr><th class="mono">Script</th><th>What it does</th></tr></thead>
@@ -882,9 +891,9 @@ timeouts:
           <tr><td class="mono">09-longhorn.sh</td><td>Deploys Longhorn as an Argo CD app; points its data path at the dedicated disk; sets the default StorageClass.</td></tr>
           <tr><td class="mono">10-sealed-secrets.sh</td><td>Installs the Sealed Secrets controller in kube-system (name kubeseal expects).</td></tr>
           <tr><td class="mono">11-apps.sh</td><td>Optional. Registers your private repo and deploys the app-of-apps root.</td></tr>
-          <tr><td class="mono">12-reconfig.sh</td><td>Maintenance, standalone. Regenerates the machine configs from <b>cluster.yaml</b> and re-applies them - live to running nodes (no reboot unless needed), insecure to fresh ones. Used to push config edits or add nodes. See §15.</td></tr>
+          <tr><td class="mono">12-reconfig.sh</td><td>Maintenance, standalone. Regenerates the machine configs from <b>cluster.yaml</b> and re-applies them - live to running nodes (no reboot unless needed), insecure to fresh ones. Used to push config edits or add nodes. See <a href="#day2">§15</a>.</td></tr>
           <tr><td class="mono">90-deprovision-vms.sh</td><td>Destructive, standalone. Stops and destroys the Talos VMs (disks included); guarded by a typed confirmation.</td></tr>
-          <tr><td class="mono">98-update.sh</td><td>Maintenance, standalone. Bumps every component to latest, rolls <span class="mono-inline">talosctl upgrade</span> node-by-node, re-applies the platform services, and refreshes every Argo CD app. See §15.</td></tr>
+          <tr><td class="mono">98-update.sh</td><td>Maintenance, standalone. Bumps every component to latest, rolls <span class="mono-inline">talosctl upgrade</span> node-by-node, re-applies the platform services, and refreshes every Argo CD app. See <a href="#day2">§15</a>.</td></tr>
           <tr><td class="mono">99-info.sh</td><td>Prints access details - Argo CD password, port-forwards, pools.</td></tr>
         </tbody>
       </table>
@@ -893,7 +902,7 @@ timeouts:
         the <span class="mono-inline">secrets/out/</span> directory - so re-running any one is safe.</p>
       <p>One helper lives at the repo root rather than in <span class="mono-inline">scripts/</span>:
         <span class="mono-inline">seal-secrets.sh</span> re-seals the secrets under <span class="mono-inline">secrets/</span> into
-        <span class="mono-inline">manifests/</span> with <span class="mono-inline">kubeseal</span> (§11) - handy when you rotate
+        <span class="mono-inline">manifests/</span> with <span class="mono-inline">kubeseal</span> (<a href="#sealed">§11</a>) - handy when you rotate
         a credential or rebuild the cluster.</p>
     </section>
 
@@ -989,12 +998,12 @@ machine:
         <div class="rail__row"><div class="rail__n">07</div><div class="rail__name">argocd</div><div class="rail__desc">Install Argo CD with a server-side apply.</div></div>
         <div class="rail__row"><div class="rail__n">08</div><div class="rail__name">longhorn</div><div class="rail__desc">Deploy Longhorn on the dedicated disk; set the default StorageClass.</div></div>
         <div class="rail__row"><div class="rail__n">09</div><div class="rail__name">sealed-secrets</div><div class="rail__desc">Install the Sealed Secrets controller so kubeseal works.</div></div>
-        <div class="rail__row opt"><div class="rail__n">·</div><div class="rail__name">apps <span class="o">opt</span></div><div class="rail__desc">Register your private repo and deploy the app-of-apps root (§10).</div></div>
+        <div class="rail__row opt"><div class="rail__n">·</div><div class="rail__name">apps <span class="o">opt</span></div><div class="rail__desc">Register your private repo and deploy the app-of-apps root (<a href="#private-repo">§10</a>).</div></div>
         <div class="rail__row"><div class="rail__n">10</div><div class="rail__name">info</div><div class="rail__desc">Print access details - password, port-forwards, pools.</div></div>
       </div>
 
       <h3>Step 0 · Reserve DHCP leases (optional)</h3>
-      <p>If you filled in the <span class="mono-inline">opnsense</span> block (§6) and did its one-time setup, create the
+      <p>If you filled in the <span class="mono-inline">opnsense</span> block (<a href="#build">§6</a>) and did its one-time setup, create the
         nodes' static leases before anything boots. Skipped automatically when <span class="mono-inline">enabled: false</span>.</p>
       <figure class="code">
         <div class="code__bar"><span class="code__name"><span class="lang sh">shell</span>dhcp (optional)</span><button class="copy" data-copy type="button">Copy</button></div>
@@ -1129,7 +1138,7 @@ kubeseal --fetch-cert | head -3                     # a PEM block = controller r
       <h3>Step 7 · App-of-apps, then the summary</h3>
       <figure class="code">
         <div class="code__bar"><span class="code__name"><span class="lang sh">shell</span>apps (optional) → info</span><button class="copy" data-copy type="button">Copy</button></div>
-<pre><code>./bootstrap.sh apps          # after you've set up the repo key - see §10
+<pre><code>./bootstrap.sh apps          # after you've set up the repo key - see <a href="#private-repo">§10</a>
 ./bootstrap.sh info          # prints the Argo CD password, port-forwards, pools</code></pre>
       </figure>
       <p><strong>Check</strong> the root app - and any children it has discovered - are Synced and Healthy:</p>
@@ -1185,7 +1194,7 @@ cat ~/.ssh/argocd_homelab.pub      # this is the PUBLIC half you paste into GitH
       </div>
 
       <h3>3 · Point the config at the private key</h3>
-      <p>Fill in the <span class="mono-inline">appOfApps</span> block from §6.8 - use the <strong>SSH</strong> repo URL
+      <p>Fill in the <span class="mono-inline">appOfApps</span> block from <a href="#build">§6</a>.8 - use the <strong>SSH</strong> repo URL
         (<span class="mono-inline">git@github.com:…</span>) and the path to the private key. A leading
         <span class="mono-inline">~</span> is expanded for you.</p>
       <figure class="code">
@@ -1325,7 +1334,7 @@ spec:
         <div class="adm__t">Sharing one IP across services</div>
         <p>Two services can share one address if they don't clash on ports - add
           <span class="mono-inline">metallb.universe.tf/allow-shared-ip: "some-key"</span> (with the same key) to both. Pi-hole
-          uses exactly this to put DNS and its web UI on a single IP (§15).</p>
+          uses exactly this to put DNS and its web UI on a single IP (<a href="#day2">§15</a>).</p>
       </div>
     </section>
 
@@ -1364,7 +1373,7 @@ spec:
       <h2>Where to go next</h2>
 
       <h3>Run Pi-hole through the app-of-apps repo</h3>
-      <p>Pi-hole is a great first workload, and because Argo CD is already wired to your private repo (§10) you deploy it the
+      <p>Pi-hole is a great first workload, and because Argo CD is already wired to your private repo (<a href="#private-repo">§10</a>) you deploy it the
         GitOps way - commit a child Application and a sealed admin password, and the root app syncs it. No manual
         <span class="mono-inline">helm install</span>. It exercises everything at once: a Longhorn volume, a MetalLB IP, and
         a SealedSecret, using the <a href="https://github.com/MoJo2600/pihole-kubernetes">MoJo2600/pihole-kubernetes</a> chart.</p>
@@ -1438,7 +1447,7 @@ spec:
     syncOptions: [CreateNamespace=true]</code></pre>
       </figure>
 
-      <p><strong>3 · Commit and push.</strong> The root app from §10 watches <span class="mono-inline">apps/</span> and picks
+      <p><strong>3 · Commit and push.</strong> The root app from <a href="#private-repo">§10</a> watches <span class="mono-inline">apps/</span> and picks
         up the new child on its own:</p>
       <figure class="code">
         <div class="code__bar"><span class="code__name"><span class="lang sh">shell</span>commit</span><button class="copy" data-copy type="button">Copy</button></div>
@@ -1740,9 +1749,17 @@ FORCE=1 ./bootstrap.sh deprovision  # skip the prompt (scripting / CI)</code></p
     </div>
     <div>
       <h4>This bundle</h4>
-      <p class="note-min">Author <code>secrets/cluster.yaml</code> (§6), then run the phases as commands (§9) - or
-        <code>./bootstrap.sh</code> for all of them. Connect a private repo (§10), seal secrets with kubeseal (§11), and try
-        Pi-hole as a first workload (§15). Grow to four hosts by adding one control plane and one worker per host.</p>
+      <p class="note-min">Author <code>secrets/cluster.yaml</code> (<a href="#build">§6</a>), then run the phases as commands (<a href="#run">§9</a>) - or
+        <code>./bootstrap.sh</code> for all of them. Connect a private repo (<a href="#private-repo">§10</a>), seal secrets with kubeseal (<a href="#sealed">§11</a>), and try
+        Pi-hole as a first workload (<a href="#day2">§15</a>). Grow to four hosts by adding one control plane and one worker per host.</p>
+      <p style="margin-top:16px">
+        <a href="https://github.com/Will4950/Talos-Lab" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:8px;font-family:var(--mono);font-size:13.5px;font-weight:600;color:var(--accent-ink);background:var(--accent-tint);border:1px solid var(--accent);border-radius:6px;padding:8px 14px;text-decoration:none">
+          <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+            <path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"></path>
+          </svg>
+          View on GitHub
+        </a>
+      </p>
     </div>
   </div>
 </footer>
