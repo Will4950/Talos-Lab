@@ -195,7 +195,7 @@ See [`cluster.example.yaml`](cluster.example.yaml) for full options.
 
 ## Bootstrap Flow
 
-[`bootstrap.sh`](bootstrap.sh) orchestrates **17 modular phase scripts** in `scripts/`:
+[`bootstrap.sh`](bootstrap.sh) orchestrates **16 modular phase scripts** in `scripts/`:
 
 ```bash
 ./bootstrap.sh                 # Run all phases
