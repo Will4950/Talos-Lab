@@ -515,6 +515,6 @@ Keep `secrets/` secure and backed up separately.
 
 <div align="center">
 
-**[View Lab Guide](lab-guide.html)** • **[Issues](https://github.com/whughes1/Talos-Lab/issues)**
+**[View Lab Guide](https://will4950.github.io/Talos-Lab/lab-guide.html)** • **[Repository](https://github.com/Will4950/Talos-Lab)** • **[Issues](https://github.com/Will4950/Talos-Lab/issues)**
 
 </div>
