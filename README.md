@@ -33,7 +33,7 @@ kubectl get nodes
 
 ---
 
-**📖 [View Complete Lab Guide](https://will4950.github.io/Talos-Lab/lab-guide.html)** — Deep walkthrough with architecture deep-dives, network design rationale, and troubleshooting edge cases.
+**📖 [View Complete Lab Guide](https://will4950.github.io/Talos-Lab/lab-guide.html)** - Deep walkthrough with architecture deep-dives, network design rationale, and troubleshooting edge cases.
 
 ---
 
@@ -41,13 +41,13 @@ kubectl get nodes
 
 A complete, GitOps-ready Kubernetes stack deployed across your Proxmox homelab:
 
-- **[Talos Linux](https://www.talos.dev/) v1.13.5** — Immutable, API-driven OS (no SSH, pure Kubernetes)
-- **Kubernetes 1.36** — Latest stable release
-- **[Argo CD](https://argoproj.github.io/cd/)** — GitOps continuous delivery (optional app-of-apps)
-- **[Longhorn](https://longhorn.io/) 1.12** — Replicated block storage on dedicated disks
-- **[MetalLB](https://metallb.universe.tf/) v0.16.1** — L2 LoadBalancer IPs on your LAN
-- **[Sealed Secrets](https://sealed-secrets.netlify.app/) 0.38.4** — Encrypt secrets for Git
-- **Self-hosted VIP** — Floating API endpoint via `talos-vip` (no external load balancer)
+- **[Talos Linux](https://www.talos.dev/) v1.13.5** - Immutable, API-driven OS (no SSH, pure Kubernetes)
+- **Kubernetes 1.36** - Latest stable release
+- **[Argo CD](https://argoproj.github.io/cd/)** - GitOps continuous delivery (optional app-of-apps)
+- **[Longhorn](https://longhorn.io/) 1.12** - Replicated block storage on dedicated disks
+- **[MetalLB](https://metallb.universe.tf/) v0.16.1** - L2 LoadBalancer IPs on your LAN
+- **[Sealed Secrets](https://sealed-secrets.netlify.app/) 0.38.4** - Encrypt secrets for Git
+- **Self-hosted VIP** - Floating API endpoint via `talos-vip` (no external load balancer)
 
 ---
 
@@ -63,17 +63,17 @@ A complete, GitOps-ready Kubernetes stack deployed across your Proxmox homelab:
 
 Install these on your workstation:
 
-- [`talosctl`](https://www.talos.dev/latest/introduction/quickstart/) — Talos cluster management
-- [`kubectl`](https://kubernetes.io/docs/tasks/tools/) — Kubernetes CLI
-- [`yq`](https://github.com/mikefarah/yq) — YAML processor (v4+)
-- `jq`, `curl` — JSON processing, HTTP requests
-- [`kubeseal`](https://github.com/bitnami-labs/sealed-secrets/releases) — Sealed Secrets CLI (optional)
+- [`talosctl`](https://www.talos.dev/latest/introduction/quickstart/) - Talos cluster management
+- [`kubectl`](https://kubernetes.io/docs/tasks/tools/) - Kubernetes CLI
+- [`yq`](https://github.com/mikefarah/yq) - YAML processor (v4+)
+- `jq`, `curl` - JSON processing, HTTP requests
+- [`kubeseal`](https://github.com/bitnami-labs/sealed-secrets/releases) - Sealed Secrets CLI (optional)
 
 ### Network
 
 - **DHCP server** with static reservations (or OPNsense with API access)
 - **Outbound internet** for image pulls
-- **L2 broadcast domain** — ARP must flood across all Proxmox hosts for VIP
+- **L2 broadcast domain** - ARP must flood across all Proxmox hosts for VIP
 - **Proxmox firewall OFF** on control-plane VM NICs (required for VIP)
 
 ---
@@ -84,8 +84,8 @@ Install these on your workstation:
 
 Each Proxmox host runs **two VMs**:
 
-- **1 Control Plane** — etcd + Kubernetes API server (small, dedicated)
-- **1 Worker** — Workloads + Longhorn storage (larger, resource-heavy)
+- **1 Control Plane** - etcd + Kubernetes API server (small, dedicated)
+- **1 Worker** - Workloads + Longhorn storage (larger, resource-heavy)
 
 This isolates etcd from workload contention and simplifies maintenance.
 
@@ -195,9 +195,9 @@ metallb:
 
 ### Optional Features
 
-- **`proxmox.provisionVMs: true`** — Auto-create VMs via SSH (qm)
-- **`opnsense.enabled: true`** — Create DHCP reservations via API
-- **`argocd.appOfApps.enabled: true`** — Bootstrap GitOps apps from a repo
+- **`proxmox.provisionVMs: true`** - Auto-create VMs via SSH (qm)
+- **`opnsense.enabled: true`** - Create DHCP reservations via API
+- **`argocd.appOfApps.enabled: true`** - Bootstrap GitOps apps from a repo
 
 See [`cluster.example.yaml`](cluster.example.yaml) for full options.
 
@@ -215,25 +215,25 @@ bash scripts/07-metallb.sh     # Direct invocation
 
 Phases run in this order (when all features enabled):
 
-1. **schematic** — Build Talos image factory schematic (bakes in extensions)
-2. **dhcp** — Create OPNsense DHCP reservations _(optional)_
-3. **provision** — Create Proxmox VMs via SSH _(optional)_
-4. **config** — Generate Talos configs (with persistent PKI)
-5. **apply** — Push configs to nodes via Talos API
-6. **bootstrap** — Initialize etcd cluster
-7. **kubeconfig** — Fetch credentials + label nodes by failure domain
-8. **metallb** — Deploy L2 address pools
-9. **argocd** — Deploy Argo CD + optional app-of-apps
-10. **longhorn** — Deploy replicated storage
-11. **sealed-secrets** — Install sealed-secrets-controller
-12. **apps** — Apply any manifests in `manifests/`
-13. **info** — Show cluster endpoints + health
+1. **schematic** - Build Talos image factory schematic (bakes in extensions)
+2. **dhcp** - Create OPNsense DHCP reservations _(optional)_
+3. **provision** - Create Proxmox VMs via SSH _(optional)_
+4. **config** - Generate Talos configs (with persistent PKI)
+5. **apply** - Push configs to nodes via Talos API
+6. **bootstrap** - Initialize etcd cluster
+7. **kubeconfig** - Fetch credentials + label nodes by failure domain
+8. **metallb** - Deploy L2 address pools
+9. **argocd** - Deploy Argo CD + optional app-of-apps
+10. **longhorn** - Deploy replicated storage
+11. **sealed-secrets** - Install sealed-secrets-controller
+12. **apps** - Apply any manifests in `manifests/`
+13. **info** - Show cluster endpoints + health
 
 Plus operational phases:
 
-- **reconfig** — Add/remove nodes, regenerate configs
-- **update** — Rolling upgrades (Talos/Kubernetes/apps)
-- **deprovision** — Destroy VMs
+- **reconfig** - Add/remove nodes, regenerate configs
+- **update** - Rolling upgrades (Talos/Kubernetes/apps)
+- **deprovision** - Destroy VMs
 
 ---
 
@@ -488,7 +488,7 @@ Open an issue before starting major changes.
 
 Licensed under the [GNU General Public License v3.0](LICENSE).
 
-This is educational/homelab software — **no warranties**. Test thoroughly before production use.
+This is educational/homelab software - **no warranties**. Test thoroughly before production use.
 
 ---
 
@@ -496,23 +496,23 @@ This is educational/homelab software — **no warranties**. Test thoroughly befo
 
 Built with these outstanding projects:
 
-- **[Talos Linux](https://www.talos.dev/)** — Siderolabs
-- **[Kubernetes](https://kubernetes.io/)** — CNCF
-- **[Argo CD](https://argoproj.github.io/cd/)** — Argo Project
-- **[Longhorn](https://longhorn.io/)** — CNCF (SUSE/Rancher)
-- **[MetalLB](https://metallb.universe.tf/)** — MetalLB Community
-- **[Sealed Secrets](https://sealed-secrets.netlify.app/)** — Bitnami (VMware)
-- **[Proxmox VE](https://www.proxmox.com/)** — Proxmox Server Solutions
+- **[Talos Linux](https://www.talos.dev/)** - Siderolabs
+- **[Kubernetes](https://kubernetes.io/)** - CNCF
+- **[Argo CD](https://argoproj.github.io/cd/)** - Argo Project
+- **[Longhorn](https://longhorn.io/)** - CNCF (SUSE/Rancher)
+- **[MetalLB](https://metallb.universe.tf/)** - MetalLB Community
+- **[Sealed Secrets](https://sealed-secrets.netlify.app/)** - Bitnami (VMware)
+- **[Proxmox VE](https://www.proxmox.com/)** - Proxmox Server Solutions
 
 ---
 
 ## Security Notes
 
 - **No SSH access** to nodes (Talos is API-only)
-- **mTLS everywhere** — `talosctl` uses client certificates
-- **Secrets gitignored** — `secrets/` never committed
-- **Sealed Secrets** for GitOps — cluster-scoped encryption keys
-- **Immutable OS** — Talos applies config changes atomically, rolls back on failure
+- **mTLS everywhere** - `talosctl` uses client certificates
+- **Secrets gitignored** - `secrets/` never committed
+- **Sealed Secrets** for GitOps - cluster-scoped encryption keys
+- **Immutable OS** - Talos applies config changes atomically, rolls back on failure
 
 **Credential storage**:
 
