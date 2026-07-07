@@ -29,7 +29,11 @@ export KUBECONFIG=secrets/kubeconfig
 kubectl get nodes
 ```
 
-**Done.** You now have a production-ready Kubernetes cluster with GitOps, replicated storage, and load balancing.
+**Done.** You now have a complete Kubernetes cluster with GitOps, replicated storage, and load balancing.
+
+---
+
+**📖 [View Complete Lab Guide](https://will4950.github.io/Talos-Lab/lab-guide.html)** — Deep walkthrough with architecture deep-dives, network design rationale, and troubleshooting edge cases.
 
 ---
 
@@ -161,6 +165,8 @@ nodes:
 ```yaml
 longhorn:
   replicaCount: 2
+  # excludeHosts:  # Skip Longhorn storage on these Proxmox hosts
+  #   - pve4       # (workers still run, just don't host replicas)
   dedicatedDisk:
     enabled: true
     sizeGB: 100 # created when provisioning VMs
@@ -168,6 +174,10 @@ longhorn:
 ```
 
 Workers need a **second, blank disk** mounted at `/var/mnt/longhorn`. Auto-created if `provisionVMs: true`.
+
+- Use `excludeHosts` to skip storage on hosts with small/overcommitted pools
+- Override disk size per-node with `dataDiskGB` in worker definition (e.g., `dataDiskGB: 60`)
+- Keep `replicaCount` ≤ storage node count (workers minus excluded hosts)
 
 ### MetalLB
 
@@ -282,11 +292,12 @@ With **2 hosts** you have **2 control planes**, which:
 
 ### ⚠️ Longhorn Dedicated Disk
 
-Each worker **must** have a second, blank disk:
+Each **storage worker** (workers not on `excludeHosts`) **must** have a second, blank disk:
 
 - Mounted at `/var/mnt/longhorn` via Talos `UserVolumeConfig`
 - Auto-created if `provisionVMs: true` and `dedicatedDisk.enabled: true`
-- Manual VMs: add a 100GB+ blank disk to each worker before deploying Longhorn
+- Manual VMs: add a 100GB+ blank disk to each storage worker before deploying Longhorn
+- Workers on excluded hosts get no data disk and host no replicas (but still run workloads)
 
 **Symptom**: Longhorn nodes stuck in "Scheduling Disabled" state.
 
@@ -341,7 +352,7 @@ Should show your configured IP pools.
 kubectl get nodes -n longhorn-system -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.conditions[?(@.type=="Ready")].status}{"\n"}{end}'
 ```
 
-All worker nodes should report `SchedulingEnabled`.
+All storage worker nodes should report `SchedulingEnabled` (workers on excluded hosts won't appear).
 
 ### Test LoadBalancer
 
