@@ -723,20 +723,33 @@ arping -c3 192.168.4.10        # replies should come from the owner's MAC</code>
       <h3><span class="s">5</span>Longhorn and its dedicated disk</h3>
       <p>The replica count is a <strong>Longhorn</strong> setting, not a <span class="mono-inline">cluster.yaml</span> one:
         set <span class="mono-inline">defaultReplicaCount</span> and <span class="mono-inline">defaultClassReplicaCount</span>
-        in <span class="mono-inline">manifests/longhorn/values.yaml</span> (Argo CD applies it), at or below your worker count.
-        Because each host has exactly one worker, Longhorn's default node anti-affinity already puts replicas on different
-        hosts, so you don't need the hard zone rule. What you set <em>here</em> is the storage decision - the
-        <span class="mono-inline">dedicatedDisk</span> block: each worker gets a second, blank disk that Talos mounts at
-        <span class="mono-inline">/var/mnt/longhorn</span>, and Longhorn stores its replicas there, keeping storage I/O and
-        capacity entirely off the OS disk.</p>
+        in <span class="mono-inline">manifests/longhorn/values.yaml</span> (Argo CD applies it), at or below your worker count
+        <strong>minus any excluded hosts</strong> (see below). Because each host has exactly one worker, Longhorn's default node
+        anti-affinity already puts replicas on different hosts, so you don't need the hard zone rule. What you set <em>here</em>
+        is the storage decision - the <span class="mono-inline">dedicatedDisk</span> block: each worker gets a second, blank disk
+        that Talos mounts at <span class="mono-inline">/var/mnt/longhorn</span>, and Longhorn stores its replicas there, keeping
+        storage I/O and capacity entirely off the OS disk.</p>
+      <p>If one host has a smaller or overcommitted Proxmox thin pool, use <span class="mono-inline">excludeHosts</span> to skip
+        Longhorn storage on that host's workers - they run workloads but host no replicas, and get no data disk (saving pool
+        space). Any worker can also override the default data disk size with <span class="mono-inline">dataDiskGB</span> in the
+        node definition (under <span class="mono-inline">nodes.workers</span>), useful when one host needs a smaller disk than
+        the rest.</p>
       <figure class="code">
         <div class="code__bar"><span class="code__name"><span class="lang yaml">yaml</span>cluster.yaml</span><button class="copy" data-copy type="button">Copy</button></div>
 <pre><code>longhorn:
+  # excludeHosts: list Proxmox hosts whose workers should NOT host Longhorn replicas.
+  # Those nodes run workloads but get no data disk and are never labeled for storage.
+  # Keep enough remaining storage nodes to satisfy the replica count in values.yaml.
+  # excludeHosts:
+  #   - pve4
   dedicatedDisk:
     enabled:      true
     sizeGB:       100                # data disk size, created when provisioning
     diskSelector: "!system_disk"     # Talos match expr picking the blank data disk
-    minSize:      "10GiB"            # Talos needs a size bound; grow then fills the disk</code></pre>
+    minSize:      "10GiB"            # Talos needs a size bound; grow then fills the disk
+
+# A worker can override sizeGB inline with dataDiskGB (under nodes.workers):
+#   - { ip: 192.168.4.22, host: pve2, vmid: 1022, mac: "...", dataDiskGB: 60 }</code></pre>
       </figure>
       <div class="adm note">
         <div class="adm__t">How the disk gets mounted</div>
@@ -745,8 +758,13 @@ arping -c3 192.168.4.10        # replies should come from the owner's MAC</code>
           <span class="mono-inline">diskSelector</span> and mounts it at <span class="mono-inline">/var/mnt/longhorn</span>.
           Talos requires a size bound on the volume, so <span class="mono-inline">minSize</span> is set and
           <span class="mono-inline">grow: true</span> expands it to fill the disk (keep <span class="mono-inline">minSize</span>
-          at or below the data-disk size). The disk must be <strong>empty</strong> - a disk with an existing filesystem won't match. If you set
-          <span class="mono-inline">scheduleOnControlPlane: true</span>, control planes get the disk and mount too.</p>
+          at or below the data-disk size). The disk must be <strong>empty</strong> - a disk with an existing filesystem won't match.
+          If you set <span class="mono-inline">scheduleOnControlPlane: true</span>, control planes get the disk and mount too.</p>
+        <p><strong>Exclusion:</strong> Workers on hosts in <span class="mono-inline">excludeHosts</span> get no data disk
+          (the provisioning script skips <span class="mono-inline">--scsi1</span> for them), no
+          <span class="mono-inline">UserVolumeConfig</span>, and <span class="mono-inline">06-kubeconfig.sh</span> never labels
+          them with <span class="mono-inline">node.longhorn.io/create-default-disk</span> - so Longhorn never auto-creates a disk
+          there and replicas never land on that node.</p>
       </div>
 
       <h3><span class="s">6</span>MetalLB - the app address pools</h3>
@@ -1041,7 +1059,7 @@ machine:
       <p>The script builds each VM the way Talos wants it on Proxmox: machine type <span class="mono-inline">q35</span> with
         <span class="mono-inline">OVMF (UEFI)</span> firmware and Secure Boot off - an EFI vars disk created with
         <span class="mono-inline">efitype=4m,pre-enrolled-keys=0</span> (no keys enrolled) - CPU type
-        <span class="mono-inline">host</span>, a <span class="mono-inline">virtio-scsi-single</span> controller with
+        <span class="mono-inline">host</span>, a <span class="mono-inline">virtio-scsi-pci</span> controller with
         discard/SSD on, the QEMU guest agent enabled, and a serial port (<span class="mono-inline">serial0: socket</span>)
         for the early console. If you build the VMs by hand, match those. The standard
         <span class="mono-inline">metal-amd64.iso</span> boots under UEFI, so no SecureBoot image variant is needed.</p>
@@ -1343,8 +1361,9 @@ spec:
     <section class="section" id="storage">
       <div class="section__eyebrow"><span class="num">14</span><span class="kick">Persistent storage</span></div>
       <h2>Longhorn on the dedicated disk</h2>
-      <p>Longhorn comes up as the <strong>default StorageClass</strong>, running only on the workers, with its data path set
-        to <span class="mono-inline">/var/mnt/longhorn</span> - the dedicated disk each worker got at install. A PVC with no
+      <p>Longhorn comes up as the <strong>default StorageClass</strong>, running on workers that host storage (all workers except
+        any on hosts in <span class="mono-inline">excludeHosts</span>), with its data path set to
+        <span class="mono-inline">/var/mnt/longhorn</span> - the dedicated disk each storage worker got at install. A PVC with no
         class named just works: it gets replicas placed one per host's data disk, isolated from the OS disk's I/O.</p>
       <figure class="code">
         <div class="code__bar"><span class="code__name"><span class="lang yaml">yaml</span>pvc.yaml</span><button class="copy" data-copy type="button">Copy</button></div>
@@ -1360,11 +1379,12 @@ spec:
       storage: 10Gi</code></pre>
       </figure>
       <div class="adm warn">
-        <div class="adm__t">Replicas vs. workers</div>
-        <p>Node anti-affinity is a hard rule, so a volume can't place more replicas than you have worker nodes. Keep
+        <div class="adm__t">Replicas vs. storage nodes</div>
+        <p>Node anti-affinity is a hard rule, so a volume can't place more replicas than you have storage nodes. Keep
           <span class="mono-inline">defaultReplicaCount</span> (and <span class="mono-inline">defaultClassReplicaCount</span>)
-          in <span class="mono-inline">manifests/longhorn/values.yaml</span> at or below your worker count, and raise it as you
-          add workers (two workers → 2, three → 3).</p>
+          in <span class="mono-inline">manifests/longhorn/values.yaml</span> at or below your storage node count (worker count
+          <strong>minus any excluded hosts</strong>), and raise it as you add storage nodes (two storage nodes → 2, three → 3).
+          If you use <span class="mono-inline">excludeHosts</span>, those workers don't count toward the storage node total.</p>
       </div>
     </section>
 

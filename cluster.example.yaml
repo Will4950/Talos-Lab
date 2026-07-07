@@ -68,7 +68,11 @@ nodes:
     # - { ip: 192.168.4.14, host: pve4, vmid: 1014, mac: "bc:24:11:00:04:01" }
   workers:
     - { ip: 192.168.4.21, host: pve1, vmid: 1021, mac: "bc:24:11:00:01:02" }
-    # pve2 has more to spare - override cores/memory for just this node:
+    # pve2 has more to spare - override cores/memory for just this node.
+    # A host with a smaller Proxmox thin pool can also shrink its Longhorn data
+    # disk with dataDiskGB (overrides longhorn.dedicatedDisk.sizeGB for this node
+    # only) so the pool is not overcommitted - the sum of all thin volumes on a
+    # pool must stay under the pool size, or a full pool can corrupt every VM on it.
     - {
         ip: 192.168.4.22,
         host: pve2,
@@ -76,6 +80,7 @@ nodes:
         mac: "bc:24:11:00:02:02",
         cores: 6,
         memory: 12288,
+        dataDiskGB: 60,
       }
     # - { ip: 192.168.4.23, host: pve3, vmid: 1023, mac: "bc:24:11:00:03:02" }
     # - { ip: 192.168.4.24, host: pve4, vmid: 1024, mac: "bc:24:11:00:04:02" }
@@ -89,6 +94,15 @@ longhorn:
   # UserVolumeConfig, and Longhorn's data path points there. When provisionVMs is
   # true the disk is created for you; if you build the VMs yourself, add a second
   # blank disk to each worker (and to control planes only if scheduleOnControlPlane).
+  #
+  # excludeHosts: Proxmox hosts whose workers should NOT host Longhorn replicas -
+  # e.g. a host with a small/overcommitted thin pool. values.yaml sets
+  # createDefaultDiskLabeledNodes: true, and 06-kubeconfig.sh labels every storage
+  # node EXCEPT those on an excluded host with node.longhorn.io/create-default-disk,
+  # so excluded nodes never get an auto-created disk and never receive replicas.
+  # Keep enough remaining storage nodes to satisfy the replica count in values.yaml.
+  # excludeHosts:
+  #   - pve4
   dedicatedDisk:
     enabled: true
     sizeGB: 100 # size of the data disk created when provisioning

@@ -38,16 +38,28 @@ fi
 
 kubectl wait --for=condition=Ready nodes --all --timeout="$health_to" || warn "not all nodes Ready yet"
 
-log "Labeling nodes with their Proxmox host (topology.kubernetes.io/zone)"
-label_zone() {
-  local ip="$1" zone="$2" node
+# Longhorn storage eligibility: workers always run Longhorn; control planes only
+# when scheduleOnControlPlane is true. A node is a STORAGE node when it is
+# eligible AND its Proxmox host is not in longhorn.excludeHosts.
+lh_on_cp="$(cfg '.install.scheduleOnControlPlane')"
+
+log "Labeling nodes: topology.kubernetes.io/zone + node.longhorn.io/create-default-disk"
+label_node() {  # ip zone role(cp|wk)
+  local ip="$1" zone="$2" role="$3" node storage="false"
   node="$(kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.addresses[?(@.type=="InternalIP")].address}{"\n"}{end}' \
     | awk -v ip="$ip" '$2==ip{print $1; exit}')"
-  if [[ -n "$node" ]]; then
-    kubectl label node "$node" "topology.kubernetes.io/zone=${zone}" --overwrite >/dev/null
-    log "  ${ip} (${node}) → zone=${zone}"
-  else
+  if [[ -z "$node" ]]; then
     warn "  no node found with InternalIP ${ip} yet - label it later"
+    return
   fi
+  kubectl label node "$node" "topology.kubernetes.io/zone=${zone}" --overwrite >/dev/null
+
+  # storage node? eligible role AND host not excluded
+  if [[ "$role" == "wk" || "$lh_on_cp" == "true" ]] && ! host_longhorn_excluded "$zone"; then
+    storage="true"
+  fi
+  kubectl label node "$node" "node.longhorn.io/create-default-disk=${storage}" --overwrite >/dev/null
+  log "  ${ip} (${node}) → zone=${zone}, longhorn-storage=${storage}"
 }
-while IFS=';' read -r ip host _; do [[ -z "$ip" ]] && continue; label_zone "$ip" "$host"; done < <(all_nodes)
+while IFS=';' read -r ip host _; do [[ -z "$ip" ]] && continue; label_node "$ip" "$host" cp; done < <(control_planes)
+while IFS=';' read -r ip host _; do [[ -z "$ip" ]] && continue; label_node "$ip" "$host" wk; done < <(workers)

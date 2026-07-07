@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # OPTIONAL: create and start the Talos VMs on each Proxmox host over SSH (qm).
 # Workers get a second, blank data disk for Longhorn when longhorn.dedicatedDisk
-# is enabled (control planes only if scheduleOnControlPlane is true).
+# is enabled (control planes only if scheduleOnControlPlane is true). Hosts listed
+# in longhorn.excludeHosts run no Longhorn storage, so their nodes get no data disk.
 # ssh uses -n and the node lists are read into arrays first, so ssh cannot swallow
 # the loop\047s stdin (which would otherwise create VMs on only the first host).
 set -euo pipefail
@@ -28,12 +29,12 @@ dedicated="$(cfg '.longhorn.dedicatedDisk.enabled')"
 data_disk_gb="$(cfg '.longhorn.dedicatedDisk.sizeGB')"; data_disk_gb="${data_disk_gb:-100}"
 lh_on_cp="$(cfg '.install.scheduleOnControlPlane')"
 
-create_vm() {  # ip host vmid mac add_data_disk cores memory os_disk
-  local ip="$1" host="$2" vmid="$3" mac="$4" add_data="$5" cores="$6" memory="$7" os_disk="$8"
+create_vm() {  # ip host vmid mac add_data_disk cores memory os_disk data_disk
+  local ip="$1" host="$2" vmid="$3" mac="$4" add_data="$5" cores="$6" memory="$7" os_disk="$8" data_disk="${9:-$data_disk_gb}"
   local ssh_target; ssh_target="$(host_ssh "$host")"
   [[ -n "$ssh_target" ]] || die "no proxmox.hosts entry named '$host' (needed for node $ip)"
   [[ -n "$vmid" ]] || die "node $ip is missing a vmid (needed to create the VM)"
-  log "→ ${ip}  (VMID ${vmid} on ${host} → ${ssh_target}; ${cores} vCPU / ${memory} MiB; data-disk=${add_data})"
+  log "→ ${ip}  (VMID ${vmid} on ${host} → ${ssh_target}; ${cores} vCPU / ${memory} MiB; data-disk=${add_data}$([[ "$add_data" == "true" ]] && echo " ${data_disk}G"))"
 
   ssh -n $ssh_opts "$ssh_target" "test -f '${iso_dir}/${iso_name}' || { echo 'downloading Talos ISO...'; curl -fL -o '${iso_dir}/${iso_name}' '${iso_url}'; }"
 
@@ -43,7 +44,7 @@ create_vm() {  # ip host vmid mac add_data_disk cores memory os_disk
   fi
 
   local data_opt=""
-  [[ "$add_data" == "true" ]] && data_opt="--scsi1 ${storage}:${data_disk_gb},discard=on,ssd=1"
+  [[ "$add_data" == "true" ]] && data_opt="--scsi1 ${storage}:${data_disk},discard=on,ssd=1"
 
   ssh -n $ssh_opts "$ssh_target" "qm create ${vmid} \
     --name talos-${vmid} --ostype l26 --machine q35 --cpu host \
@@ -137,24 +138,37 @@ done
 
 log "Provisioning VMs (ISO: ${iso_name})"
 
-# control planes - data disk only if Longhorn also runs on them
-cp_data="false"; [[ "$dedicated" == "true" && "$lh_on_cp" == "true" ]] && cp_data="true"
+# A node gets a Longhorn data disk only when it will actually host storage:
+# dedicatedDisk enabled, the role runs Longhorn, AND its host is not in
+# longhorn.excludeHosts (those nodes carry no Longhorn disk - see 06-kubeconfig.sh
+# / values.yaml createDefaultDiskLabeledNodes - so a data disk there is dead weight
+# on the Proxmox pool).
+wants_data_disk() {  # role(cp|wk) host
+  local role="$1" host="$2"
+  [[ "$dedicated" == "true" ]] || { echo false; return; }
+  [[ "$role" == "wk" || "$lh_on_cp" == "true" ]] || { echo false; return; }
+  host_longhorn_excluded "$host" && { echo false; return; }
+  echo true
+}
+
+# control planes - data disk only if Longhorn also runs on them (and host not excluded)
 mapfile -t cp_lines < <(control_planes)
 for line in "${cp_lines[@]}"; do
   [[ -z "$line" ]] && continue
   IFS=';' read -r ip host vmid mac <<<"$line"
   IFS=';' read -r c_cores c_mem c_disk <<<"$(node_resources cp "$ip")"
-  create_vm "$ip" "$host" "$vmid" "$mac" "$cp_data" "$c_cores" "$c_mem" "$c_disk"
+  c_data="$(node_data_disk_gb cp "$ip")"
+  create_vm "$ip" "$host" "$vmid" "$mac" "$(wants_data_disk cp "$host")" "$c_cores" "$c_mem" "$c_disk" "$c_data"
 done
 
-# workers - data disk whenever dedicatedDisk is enabled
-wk_data="false"; [[ "$dedicated" == "true" ]] && wk_data="true"
+# workers - data disk whenever dedicatedDisk is enabled (and host not excluded)
 mapfile -t wk_lines < <(workers)
 for line in "${wk_lines[@]}"; do
   [[ -z "$line" ]] && continue
   IFS=';' read -r ip host vmid mac <<<"$line"
   IFS=';' read -r w_cores w_mem w_disk <<<"$(node_resources wk "$ip")"
-  create_vm "$ip" "$host" "$vmid" "$mac" "$wk_data" "$w_cores" "$w_mem" "$w_disk"
+  w_data="$(node_data_disk_gb wk "$ip")"
+  create_vm "$ip" "$host" "$vmid" "$mac" "$(wants_data_disk wk "$host")" "$w_cores" "$w_mem" "$w_disk" "$w_data"
 done
 
 log "VMs started. Make sure each MAC has a DHCP reservation to its listed IP."

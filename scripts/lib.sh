@@ -32,6 +32,10 @@ control_planes() { yq -r '.nodes.controlPlanes[]? | [.ip, .host, (.vmid // "" | 
 workers()        { yq -r '.nodes.workers[]?       | [.ip, .host, (.vmid // "" | tostring), (.mac // "")] | join(";")' "$CONFIG"; }
 all_nodes()      { control_planes; workers; }
 host_ssh()       { yq -r ".proxmox.hosts[]? | select(.name == \"$1\") | .ssh // \"\"" "$CONFIG"; }
+# Hosts excluded from Longhorn storage (one name per line).
+longhorn_excluded_hosts() { yq -r '.longhorn.excludeHosts[]?' "$CONFIG"; }
+# True if the given Proxmox host is in longhorn.excludeHosts.
+host_longhorn_excluded()  { longhorn_excluded_hosts | grep -qxF "$1"; }
 # Proxmox hosts as  name;ssh  lines.
 proxmox_hosts()  { yq -r '.proxmox.hosts[]? | [.name, (.ssh // "")] | join(";")' "$CONFIG"; }
 
@@ -50,6 +54,22 @@ node_resources() {
   line="$(yq -r "$sel | select(.ip == \"$ip\") | [(.cores // \"\" | tostring),(.memory // \"\" | tostring),(.diskGB // \"\" | tostring)] | join(\";\")" "$CONFIG")"
   IFS=';' read -r oc om od <<<"$line"
   printf '%s;%s;%s\n' "${oc:-$dc}" "${om:-$dm}" "${od:-$dd}"
+}
+
+# Resolve a node's Longhorn data-disk size (GiB), honoring:
+#   per-node override (nodes[*].dataDiskGB)
+#     -> global (longhorn.dedicatedDisk.sizeGB) -> hard default 100
+# This lets hosts with a smaller Proxmox thin pool carry a smaller data disk so
+# the pool is not overcommitted (sum of thin volumes > pool size risks fs
+# corruption for every VM on that pool when it fills).
+# Usage: node_data_disk_gb cp|wk <ip>
+node_data_disk_gb() {
+  local role="$1" ip="$2" sel dd od
+  if [[ "$role" == "cp" ]]; then sel='.nodes.controlPlanes[]?'
+  else                          sel='.nodes.workers[]?'; fi
+  dd="$(cfg '.longhorn.dedicatedDisk.sizeGB')"; [[ -z "$dd" ]] && dd=100
+  od="$(yq -r "$sel | select(.ip == \"$ip\") | (.dataDiskGB // \"\" | tostring)" "$CONFIG")"
+  printf '%s\n' "${od:-$dd}"
 }
 
 # --- derived paths + values ----------------------------------------------
